@@ -1,0 +1,108 @@
+#map {
+    /* border: 1px solid black; */
+    color: black;
+    /* border-collapse: collapse; */
+    border-spacing: 0px;
+    border: 1px solid rgba(0, 0, 0, 0.303);
+    text-align: center;
+}
+
+#map td {
+    width: 30px;
+    height: 30px;
+    box-sizing: border-box;
+    font-size: 12px;
+    padding: 0;
+}
+
+#map td.ground{
+    background-color: #F8F8F8;
+}
+
+#map td.barrier{
+    background-color: #707070;
+    color: white;
+}
+
+#map td.river{
+    background-color: rgba(47, 151, 255, 0.547);
+    color: white;
+}
+
+#map td.desert{
+    background-color: #F0E68C;
+}
+
+#map td.in-forward-open{
+    border: 2px dashed rgba(66, 181, 0, 0.864);
+}
+
+#map td.in-backward-open{
+    border: 2px dashed rgba(173, 69, 4, 0.864);
+}
+
+#map td.in-forward-close{
+    border: 3px solid rgba(3, 88, 9, 0.647);
+}
+
+#map td.in-backward-close{
+    border: 3px solid rgba(88, 48, 3, 0.647);
+}
+
+#map td.forward-path-node{
+    outline: 3px solid red;
+}
+
+#map td.backward-path-node{
+    outline: 3px solid rgb(106, 0, 255);
+}
+
+#map td.forward-current{
+    /* border: 3px solid rgb(0, 201, 37); */
+    outline: 4px solid rgb(0, 201, 37);
+}
+
+#map td.backward-current{
+    /* border: 3px solid rgb(0, 201, 37); */
+    outline: 4px solid rgb(201, 90, 0);
+}
+
+#map td.start{
+    border: 3px dashed rgb(123, 0, 255);
+    color: rgb(123, 0, 255)
+}
+
+#map td.end{
+    border: 3px dashed rgb(123, 0, 255);
+    color: rgb(123, 0, 255)
+}
+
+#map td div.forward-f, td div.backward-f {
+    width: 24px;
+    height: 12px;
+    box-sizing: border-box;
+    padding: 0;
+    margin: -2px auto 1px;
+}
+
+#map td div.forward-f {
+    color: rgb(0, 159, 29)
+}
+
+#map td div.backward-f {
+    color: rgb(169, 77, 3)
+}
+
+#map td.river div.backward-f {
+    color: rgb(104, 49, 5)
+}
+
+#map td.forward-next div.forward-f, 
+#map td.forward-next span.start-flag,
+#map td.forward-next span.end-flag,
+#map td.backward-next div.backward-f, 
+#map td.backward-next span.start-flag,
+#map td.backward-next span.end-flag
+{
+    font-weight: bold;
+}

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Document</title>
+    <link rel="stylesheet" type="text/css" href="css/map.css">
+
+</head>
+
+<body>
+    <div id="app">
+        <table id="map" border="1">
+            <tr v-for="(row, y) in mapInfo.labels">
+                <td v-for="(label, x) in row" :class="getCoordClasses(x, y, label)">
+                    <!-- {{getContent(x, y)}} -->
+                    <span v-if="isStart(x, y)" class="start-flag">S</span>
+                    <span v-else-if="isEnd(x, y)" class="end-flag">T</span>
+                    <span v-else>
+                        <div class="forward-f" v-if="isInForwardClose(x, y) || isInForwardOpen(x, y)">
+                            {{getForwardF(x, y).toFixed(1)}}
+                        </div>
+                        <div class="backward-f" v-if="isInBackwardClose(x, y) || isInBackwardOpen(x, y)">
+                            {{this.getBackwardF(x, y).toFixed(1)}}
+                        </div>
+                    </span>
+                </td>
+            </tr>
+        </table>
+
+        <div>
+            Tips:
+            <span v-if="result === null">Click <i><b>Search</b></i> button or press <i><b>Enter</b></i> to start !</span>
+            <span v-else=>Click <i><b>&lt;&lt;</b></i>/<i><b>&lt;</b></i>/<i><b>&gt;</b></i>/<i><b>&gt;&gt;</b></i>
+                or press <i><b>Up</b></i>/<i><b>Left</b></i>/<i><b>Right</b></i>/<i><b>Down</b></i> to navigate</span>
+        </div>
+
+        <!-- <br/> -->
+        <div>
+            Result status: 
+            <span v-if="result === null">(not start yet)</span>
+            <span v-else-if="result.isSuccess === false"><b>fail</b></span>
+            <span v-else><b>success</b>, final cost is <span>{{ getFinalCost().toFixed(2) }}</span></span>
+        </div>
+        <div>Current step: <b>{{ currentStepIdx }}</b></div>
+
+        <!-- <br/> -->
+        <button @click="initialize" :disabled="result === null">Initialize</button>
+        <button @click="getResult">Search</button>
+        <br />
+        <button @click="toBegining" :disabled="!hasPrevStep()">&lt;&lt;</button>
+        <button @click="decrementStep" :disabled="!hasPrevStep()">&lt;</button>
+        <button @click="incrementStep" :disabled="!hasNextStep()">&gt;</button>
+        <button @click="toEnd" :disabled="!hasNextStep()">&gt;&gt;</button>
+    </div>
+</body>
+<!-- index.html -->
+<script type="importmap">
+    {
+        "imports": {
+            "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.js"
+        }
+    }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+<script type="module">
+    import { createApp } from 'vue'
+    import mapInfo from './js/mapInfo.js'
+    // import mapInfo from './js/mapInfo_small.js'
+    import NodeInfo from './js/NodeInfo.js'
+    console.log(JSON.stringify(mapInfo))
+
+    const app = createApp({
+        data() {
+            return {
+                mapInfo: mapInfo,
+                result: null,
+                currentStepIdx: 0,
+                currentCoord: { forward: null, backward: null },
+                nextCoord: { forward: null, backward: null },
+                nodeInfoMap: { forward: null, backward: null },
+                showPath: false
+            }
+        },
+        methods: {
+            initialize() {
+                //window.removeEventListener('keydown', this.keyDownHandle)
+                this.mapInfo = mapInfo
+                this.result = null
+                this.currentStepIdx = 0
+                this.currentCoord = { forward: null, backward: null }
+                this.nextCoord = { forward: null, backward: null },
+                    this.nodeInfoMap = { forward: null, backward: null }
+                this.showPath = false
+            },
+            getResult() {
+                if (this.result !== null) this.initialize()
+                let that = this
+                axios({
+                    method: 'post',
+                    url: 'http://localhost:8080/astar/unidirectional/search',
+                    // url: 'http://localhost:8080/astar/bidirectional/search',
+                    data: mapInfo
+                }).then(function (response) {
+                    that.result = response.data
+                    that.initNodeInfoMap(that.mapInfo.height, that.mapInfo.width)
+                    that.renderCurrent(0)
+                    that.setPathNodes()
+                })
+            },
+            incrementStep() {
+                if (this.hasNextStep()) this.currentStepIdx++
+            },
+            decrementStep() {
+                if (this.hasPrevStep()) this.currentStepIdx--
+            },
+            toBegining() {
+                this.currentStepIdx = 0
+            },
+            toEnd() {
+                if (this.result !== null) {
+                    this.currentStepIdx = this.result.steps.length - 1
+                }
+                else {
+                    this.currentStepIdx = 0
+                }
+            },
+            renderStepUpdate(newIdx, oldIdx) {
+                if (newIdx === 0) {
+                    return
+                }
+                if (newIdx > oldIdx) {
+                    for (let i = oldIdx; i < newIdx; i++) {
+                        this.renderNext(i);
+                    }
+                }
+                else {
+                    for (let i = oldIdx; i > newIdx; i--) {
+                        this.renderPrev(i);
+                    }
+                }
+            },
+            renderNext(idx) {
+                if (idx + 1 >= this.result.steps.length) {
+                    console.warn("Idx is already the last!")
+                    return;
+                }
+                let nextIdx = idx + 1
+                let coord
+                //渲染下一个步骤
+                this.renderCurrent(nextIdx)
+            },
+            renderPrev(idx) {
+                if (idx - 1 < 0) {
+                    console.warn("Idx is already the first!")
+                    return;
+                }
+                let prevIdx = idx - 1
+                let coord
+                for (let each of this.result.steps[idx][0].neighbors) {
+                    coord = each.coord
+                    this.nodeInfoMap['forward'][coord.y][coord.x].setInOpen(false)
+                }
+                if (this.result.bidirectional && this.result.steps[idx][1].current !== null) {
+                    for (let each of this.result.steps[idx][1].neighbors) {
+                        coord = each.coord
+                        this.nodeInfoMap['backward'][coord.y][coord.x].setInOpen(false)
+                    }
+                }
+                //将当前结点从close表转移到open表中
+                coord = this.result.steps[idx][0].current.coord
+                this.nodeInfoMap['forward'][coord.y][coord.x].setInClose(false)
+                this.nodeInfoMap['forward'][coord.y][coord.x].setInOpen(true)
+                if (this.result.bidirectional && this.result.steps[idx][1].current !== null) {
+                    coord = this.result.steps[idx][1].current.coord
+                    this.nodeInfoMap['backward'][coord.y][coord.x].setInClose(false)
+                    this.nodeInfoMap['backward'][coord.y][coord.x].setInOpen(true)
+                }
+                //渲染前一个步骤
+                this.renderCurrent(prevIdx)
+            },
+            //渲染idx指向的步骤（渲染idx步骤的当前结点及其邻接结点）
+            renderCurrent(idx) {
+                if (idx >= this.result.steps.length && idx <= 0) {
+                    console.warn("Idx out of range!")
+                    return;
+                }
+                //渲染当前结点和下一个扩展结点
+                this.currentCoord['forward'] = this.result.steps[idx][0].current.coord
+                this.nextCoord['forward'] = this.result.steps[idx][0].next !== null ? this.result.steps[idx][0].next.coord : null
+                let coord = this.result.steps[idx][0].current.coord
+                this.nodeInfoMap.forward[coord.y][coord.x].setInClose(true)
+                this.nodeInfoMap.forward[coord.y][coord.x].setInOpen(false)
+                this.nodeInfoMap.forward[coord.y][coord.x].setG(this.result.steps[idx][0].current.g)
+                this.nodeInfoMap.forward[coord.y][coord.x].setH(this.result.steps[idx][0].current.h)
+                if (this.result.bidirectional && this.result.steps[idx][1].current !== null) {
+                    this.currentCoord['backward'] = this.result.steps[idx][1].current.coord
+                    this.nextCoord['backward'] = this.result.steps[idx][0].next !== null ? this.result.steps[idx][1].next.coord : null
+                    coord = this.result.steps[idx][1].current.coord
+                    this.nodeInfoMap.backward[coord.y][coord.x].setInClose(true)
+                    this.nodeInfoMap.backward[coord.y][coord.x].setInOpen(false)
+                    this.nodeInfoMap.backward[coord.y][coord.x].setG(this.result.steps[idx][1].current.g)
+                    this.nodeInfoMap.backward[coord.y][coord.x].setH(this.result.steps[idx][1].current.h)
+                }
+
+                //渲染当前结点的邻接结点
+                for (let each of this.result.steps[idx][0].neighbors) {
+                    let coord = each.coord
+                    this.nodeInfoMap['forward'][coord.y][coord.x].setInOpen(true)
+                    this.nodeInfoMap['forward'][coord.y][coord.x].setG(each.g)
+                    this.nodeInfoMap['forward'][coord.y][coord.x].setH(each.h)
+                }
+                if (this.result.bidirectional && this.result.steps[idx][1].current !== null) {
+                    for (let each of this.result.steps[idx][1].neighbors) {
+                        let coord = each.coord
+                        this.nodeInfoMap['backward'][coord.y][coord.x].setInOpen(true)
+                        this.nodeInfoMap['backward'][coord.y][coord.x].setG(each.g)
+                        this.nodeInfoMap['backward'][coord.y][coord.x].setH(each.h)
+                    }
+                }
+            },
+
+            initNodeInfoMap(height, width) {
+                this.nodeInfoMap['forward'] = this.makeNodeInfoMap(height, width)
+                this.nodeInfoMap['backward'] = this.makeNodeInfoMap(height, width)
+            },
+            makeNodeInfoMap(height, width) {
+                let nodeInfoMap = new Array(height)
+                for (let i = 0; i < nodeInfoMap.length; i++) {
+                    nodeInfoMap[i] = new Array(width)
+                    for (let j = 0; j < nodeInfoMap[i].length; j++) {
+                        nodeInfoMap[i][j] = new NodeInfo()
+                    }
+                }
+                return nodeInfoMap
+            },
+            setPathNodes() {
+                if (this.result.path === null) return
+                for (let each of this.result.path[0]) {
+                    let coord = each.coord
+                    this.nodeInfoMap['forward'][coord.y][coord.x].setPathNode(true)
+                }
+                if (this.result.bidirectional === true) {
+                    for (let each of this.result.path[1]) {
+                        let coord = each.coord
+                        this.nodeInfoMap['backward'][coord.y][coord.x].setPathNode(true)
+                    }
+                }
+            },
+            getCoordClasses(x, y, label) {
+                return [
+                    this.mapInfo.labelInfos[label].name,
+                    {
+                        'forward-current': this.isForwardCurrent(x, y),
+                        'backward-current': this.isBackwardCurrent(x, y),
+                        'forward-next': this.isForwardNext(x, y),
+                        'backward-next': this.isBackwardNext(x, y),
+                        'in-forward-open': this.isInForwardOpen(x, y),
+                        'in-forward-close': this.isInForwardClose(x, y),
+                        'in-backward-open': this.isInBackwardOpen(x, y),
+                        'in-backward-close': this.isInBackwardClose(x, y),
+                        'start': this.isStart(x, y),
+                        'end': this.isEnd(x, y),
+                        'forward-path-node': this.showPath && this.isForwardPathNode(x, y),
+                        'backward-path-node': this.showPath && this.isBackwardPathNode(x, y),
+                    }
+                ]
+            },
+            keyDownHandle(ev) {
+                const LEFT = 37
+                const UP = 38
+                const RIGHT = 39
+                const DOWN = 40
+                const ENTER = 13
+                const ESC = 27
+                if (ev.keyCode === LEFT) {
+                    this.decrementStep();
+                }
+                else if (ev.keyCode === RIGHT) {
+                    this.incrementStep();
+                }
+                else if (ev.keyCode === UP) {
+                    this.toBegining();
+                }
+                else if (ev.keyCode === DOWN) {
+                    this.toEnd();
+                }
+                else if (ev.keyCode === ENTER) {
+                    this.getResult();
+                }
+                else if (ev.keyCode === ESC) {
+                    this.initialize();
+                }
+            },
+
+            getFinalCost(){
+                if(this.result === null) return -1.0
+                return this.result.finalCost
+            },
+            isForwardCurrent(x, y) {
+                return this.currentCoord['forward'] !== null
+                    && this.currentCoord['forward'].x === x && this.currentCoord['forward'].y === y
+            },
+            isBackwardCurrent(x, y) {
+                return this.currentCoord['backward'] !== null
+                    && this.currentCoord['backward'].x === x && this.currentCoord['backward'].y === y
+            },
+            isForwardNext(x, y) {
+                return this.nextCoord['forward'] !== null
+                    && this.nextCoord['forward'].x === x && this.nextCoord['forward'].y === y
+            },
+            isBackwardNext(x, y) {
+                return this.nextCoord['backward'] !== null
+                    && this.nextCoord['backward'].x === x && this.nextCoord['backward'].y === y
+            },
+            isInForwardOpen(x, y) { return this.nodeInfoMap['forward'] !== null && this.nodeInfoMap['forward'][y][x].isInOpen() },
+            isInForwardClose(x, y) { return this.nodeInfoMap['forward'] !== null && this.nodeInfoMap['forward'][y][x].isInClose() },
+            isInBackwardOpen(x, y) { return this.nodeInfoMap['backward'] !== null && this.nodeInfoMap['backward'][y][x].isInOpen() },
+            isInBackwardClose(x, y) { return this.nodeInfoMap['backward'] !== null && this.nodeInfoMap['backward'][y][x].isInClose() },
+            isForwardPathNode(x, y) { return this.nodeInfoMap['forward'] !== null && this.nodeInfoMap['forward'][y][x].isPathNode() },
+            isBackwardPathNode(x, y) { return this.nodeInfoMap['backward'] !== null && this.nodeInfoMap['backward'][y][x].isPathNode() },
+            isStart(x, y) { return this.mapInfo.startCoord.x === x && this.mapInfo.startCoord.y === y },
+            isEnd(x, y) { return this.mapInfo.endCoord.x === x && this.mapInfo.endCoord.y === y },
+            getForwardF(x, y) { return this.nodeInfoMap['forward'] !== null ? this.nodeInfoMap['forward'][y][x].getF() : 0 },
+            getBackwardF(x, y) { return this.nodeInfoMap['backward'] !== null ? this.nodeInfoMap['backward'][y][x].getF() : 0 },
+            hasNextStep() { return this.result !== null && this.currentStepIdx + 1 < this.result.steps.length },
+            hasPrevStep() { return this.result !== null && this.currentStepIdx - 1 >= 0 }
+        },
+        watch: {
+            // 每当 currentStepIdx 改变时，这个函数就会执行
+            currentStepIdx(newIdx, oldIdx) {
+                if (this.result === null) return
+                if (newIdx != 0) {
+                    this.renderStepUpdate(newIdx, oldIdx)
+                }
+                else {
+                    this.initNodeInfoMap(this.mapInfo.height, this.mapInfo.width)
+                    this.renderCurrent(0)
+                    this.setPathNodes()
+                }
+                if (newIdx === this.result.steps.length - 1 && this.result.isSuccess) {
+                    this.showPath = true
+                }
+                else {
+                    this.showPath = false
+                }
+            }
+        },
+        mounted() {
+            window.addEventListener('keydown', this.keyDownHandle)
+        }
+    })
+    app.mount('#app')
+
+
+</script>
+
+</html>
