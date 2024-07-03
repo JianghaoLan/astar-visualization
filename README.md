@@ -11,12 +11,12 @@
 
 单向搜索：
 
-![search1](assets\search1.png)
+![search1](./assets/search1.png)
 
-![search2](assets\search2.png)
+![search2](./assets/search2.png)
 
 双向搜索：
 
-![bi-search1](assets\bi-search1.png)
+![bi-search1](./assets/bi-search1.png)
 
-![bi-search2](assets\bi-search2.png)
+![bi-search2](./assets/bi-search2.png)
